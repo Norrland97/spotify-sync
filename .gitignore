@@ -18,6 +18,7 @@ secrets/
 # Spotify API credentials
 spotify-credentials.json
 client-secret.txt
+.secrets/
 
 # ==================== NODE.JS ====================
 # Dependencies
