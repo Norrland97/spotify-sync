@@ -7,10 +7,15 @@ A cross-platform mobile application that enables two users to listen to Spotify 
 ### Key Features
 - Real-time synchronized playback between two devices
 - Host/Client architecture (one leads, one follows)
-- Automatic sync checks every 2 minutes and at song transitions
+- Automatic sync checks every minute and at song transitions
 - Manual micro-adjustment controls (±5 seconds)
 - Cross-platform support (iOS & Android)
 - Clean separation of UI and business logic
+- "**---** for all" functionallity, doing this on one device does so for all:
+   - Pause/Resume
+   - Skip/Restart
+   - Add to Queue
+   
 
 ---
 
@@ -172,6 +177,9 @@ DELETE /api/sessions/:id
 GET    /api/sessions/:id/state
 - Get current session state
 
+GET    /api/sessions/:id/queue
+- Get current session queue
+
 PATCH  /api/sessions/:id/offset
 - Update client offset adjustment
 ```
@@ -215,20 +223,17 @@ sync_status { drift, lastSync }
 **1. Initial Sync**
 - When client joins, immediately sync to host's current position
 - Account for network latency by measuring round-trip time
+- Client gets song queue from host
 
-**2. Periodic Sync (Every 2 minutes)**
+**2. Periodic Sync (Every minute)**
 - Host sends current state: `{ trackUri, position, timestamp }`
 - Server calculates expected client position
-- If drift > 1000ms, send sync command
+- If drift > 500ms, send sync command
 
-**3. Song Transition Sync**
-- Host detects song change (current trackUri ≠ previous trackUri)
-- Immediately broadcast new track to client
-- Client seeks to host's position in new track
-
-**4. Manual Sync Events**
+**3. Manual Sync Events**
 - Host pauses/plays → immediately sync client
 - Either device loses connection → resync on reconnect
+- Either host or client can add offset up to +- 5 seconds that applies to local playback only.
 
 ### Drift Calculation
 
@@ -273,10 +278,10 @@ function calculateDrift(hostState, clientState, userOffset) {
 4. Client receives sync command
    └─> Logic: SyncService.handleSyncCommand()
        └─> Logic: SpotifyService.playTrack('xyz')
-       └─> Logic: SpotifyService.seek(45000 + offset)
+       └─> Logic: SpotifyService.seek(45000 + offset + localOffset)
        └─> UI: Updates to show playing state
 
-5. Every 2 minutes:
+5. Every minute:
    └─> Host: Sends current state
        └─> Backend: Calculates drift
            └─> If drift > threshold:
