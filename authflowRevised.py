@@ -7,6 +7,7 @@ import webbrowser
 import os
 import logging
 import time
+from colorama import Fore, Back, Style
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
@@ -319,6 +320,28 @@ class SpotifyClient:
                     pass
             return None
 
+    def _api_request_simple(
+        self, requestType: str, endpoint: str
+    ) -> Optional[Dict[Any, Any]]:
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        url = f"{self.API_BASE_URL}{endpoint}"
+        response = requests.request(
+            requestType, url, headers=headers, timeout=10, allow_redirects=False
+        )
+        if response is None:
+            return None
+        if response.status_code in [200, 204]:
+            return
+
+        if "error" in response.json():
+            error = response.json().get("error")
+            print(Fore.RED + f"\nERROR: {error.get('status')}")
+            print(Fore.WHITE + Style.DIM + f"Message: {error.get('message')}")
+            print(f"Need to implement get available devices or something. not today :)")
+            print(Style.RESET_ALL)
+
+        return response
+
     # API Methods
 
     def get_user_profile(self) -> Optional[Dict[Any, Any]]:
@@ -358,17 +381,33 @@ class SpotifyClient:
         self.logger.info(f"Starting playback: {context_uri}")
         return self._api_request("PUT", endpoint, json=data)
 
-    async def skip_playback(self) -> str:
+    def pause_playback(self):
+        endpoint = "/me/player/pause"
+        self._api_request_simple("PUT", endpoint)
+
+    def start_playback(self):
+        endpoint = "/me/player/play"
+        self._api_request_simple("PUT", endpoint)
+
+    def play_or_pause_playback(self):
+        state = self.get_playback_state()
+        if state.get("is_playing"):
+            self.pause_playback()
+        else:
+            self.start_playback()
+
+    async def skip_playback(self):
         """Skip song.
         This function does not use _api_request().
         The request should rerurn 204 (empty response) when successfull, but we get 200 with a body
         """
-        headers = {"Authorization": f"Bearer {self.access_token}"}
-        url = f"{self.API_BASE_URL}/me/player/next"
-        requests.request(
-            "POST", url, headers=headers, timeout=10, allow_redirects=False
-        )
-        return "success"
+        endpoint = "/me/player/next"
+        self._api_request_simple("POST", endpoint)
+
+    async def previous_playback(self):
+        """Previous song"""
+        endpoint = "/me/player/previous"
+        self._api_request_simple("POST", endpoint)
 
     def get_playback_state(self) -> Optional[Dict[Any, Any]]:
         """Get information about user's current playback"""
@@ -459,17 +498,27 @@ async def main():
         # print(f"\nPlayback result: {result}")
         selection = ""
         while selection not in ["exit", "e"]:
-            selection = input("k = pause, j = previous, l = next \nSelect: ")
+            selection = input(
+                "k = play/pause, j = previous, l = next \n u = reverse 10s, o = skipp 10s, \nSelect: "
+            )
             match selection:
                 case "j":
-                    print("\nPrevious song selected, not implemented yet!\n")
+                    print("\nStarting previous song played\n")
+                    await client.previous_playback()
+                    time.sleep(0.2)
                 case "k":
-                    print("\nPausing... (not implemented)\n")
+                    print("\nPausing...\n")
+                    client.play_or_pause_playback()
+                    print("Playback paused")
                 case "l":
                     print("\nSkipping song...")
                     await client.skip_playback()
                     time.sleep(0.2)
                     print("Song skipped\n")
+                case "o":
+                    print("skipping 10s")
+                case "u":
+                    print("reversing 10s")
 
             show_playback_state(client=client)
 
