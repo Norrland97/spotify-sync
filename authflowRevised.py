@@ -323,6 +323,7 @@ class SpotifyClient:
     def _api_request_simple(
         self, requestType: str, endpoint: str
     ) -> Optional[Dict[Any, Any]]:
+        """Simple version of the above api request, something is wrong with it and I do not know what"""
         headers = {"Authorization": f"Bearer {self.access_token}"}
         url = f"{self.API_BASE_URL}{endpoint}"
         response = requests.request(
@@ -350,7 +351,7 @@ class SpotifyClient:
 
     def start_playback(
         self,
-        context_uri: str,
+        context_uri: str = None,
         position_ms: int = 0,
         offset_position: int = 0,
         device_id: Optional[str] = None,
@@ -367,26 +368,28 @@ class SpotifyClient:
         Returns:
             Response dict or None if failed
         """
+        self.logger.info(f"Starting playback: {context_uri}")
+
         endpoint = "/me/player/play"
         if device_id:
             endpoint += f"?device_id={device_id}"
+
+        if not context_uri:
+            # just start playback if there is no song specified
+            return self._api_request_simple("PUT", endpoint)
 
         data = {
             "context_uri": context_uri,
             "offset": {"position": offset_position},
             "position_ms": position_ms,
         }
-
-        self.logger.info(f"Starting playback: {context_uri}")
         return self._api_request("PUT", endpoint, json=data)
 
     def pause_playback(self):
-        endpoint = "/me/player/pause"
-        self._api_request_simple("PUT", endpoint)
+        self._api_request_simple("PUT", "/me/player/pause")
 
-    def start_playback(self):
-        endpoint = "/me/player/play"
-        self._api_request_simple("PUT", endpoint)
+    # def start_playback(self):
+    #     self._api_request_simple("PUT", "/me/player/play")
 
     def play_or_pause_playback(self):
         state = self.get_playback_state()
@@ -400,8 +403,7 @@ class SpotifyClient:
         This function does not use _api_request().
         The request should rerurn 204 (empty response) when successfull, but we get 200 with a body
         """
-        endpoint = "/me/player/next"
-        self._api_request_simple("POST", endpoint)
+        self._api_request_simple("POST", "/me/player/next")
 
     async def skip_ms_playback(self, ms: int):
         """skips 10 seconds forward, if it is less than 10 s left go to next song"""
@@ -426,8 +428,7 @@ class SpotifyClient:
 
     async def previous_playback(self):
         """Previous song"""
-        endpoint = "/me/player/previous"
-        self._api_request_simple("POST", endpoint)
+        self._api_request_simple("POST", "/me/player/previous")
 
     def get_playback_state(self) -> Optional[Dict[Any, Any]]:
         """Get information about user's current playback"""
@@ -439,9 +440,20 @@ class SpotifyClient:
         self.logger.info("Fetching available devices")
         return self._api_request("GET", "/me/player/devices")
 
+    def get_playback_queue(self):
+        queue = self._api_request("GET", "/me/player/queue")
+        if not queue:
+            print("ERROR. no repsonse for queue")
+        return queue
+
     def seek_playback_position(self, position: int):
         endpoint = f"/me/player/seek?position_ms={position}"
         self._api_request_simple("PUT", endpoint=endpoint)
+
+    def play_enormous(self):
+        self.start_playback(
+            context_uri="spotify:playlist:4L8NsT1kLj5I4YgGyZDafg", offset_position=25
+        )
 
 
 def load_credentials(secrets_file: str = SECRETS_FILE) -> tuple[str, str]:
@@ -477,6 +489,13 @@ def show_playback_state(client):
             f"Album uri and song nr: {track.get('uri')} nr:{track.get('track_number')}"
         )
         print(f"Playing on: {playback.get('device').get('name')}")
+
+        tracks = [
+            track.get("name") for track in client.get_playback_queue().get("queue")
+        ]
+        firsttrack = client.get_playback_queue().get("queue")[0]
+        # print(f"playback queue: {tracks}")
+        # print(f"first in queeue: {firsttrack}")
 
 
 async def main():
@@ -545,6 +564,8 @@ async def main():
                 case "u":
                     print("reversing 10s")
                     await client.skip_ms_playback(ms=-10000)
+                case "m":
+                    client.play_enormous()
 
             show_playback_state(client=client)
 
