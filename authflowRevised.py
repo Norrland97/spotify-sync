@@ -337,7 +337,6 @@ class SpotifyClient:
             error = response.json().get("error")
             print(Fore.RED + f"\nERROR: {error.get('status')}")
             print(Fore.WHITE + Style.DIM + f"Message: {error.get('message')}")
-            print(f"Need to implement get available devices or something. not today :)")
             print(Style.RESET_ALL)
 
         return response
@@ -404,6 +403,27 @@ class SpotifyClient:
         endpoint = "/me/player/next"
         self._api_request_simple("POST", endpoint)
 
+    async def skip_ms_playback(self, ms: int):
+        """skips 10 seconds forward, if it is less than 10 s left go to next song"""
+        state = self.get_playback_state()
+        progress = state.get("progress_ms")
+        item = state.get("item")
+        targetPosition = progress + ms
+
+        if not item:
+            print("not able to skip without a song")
+            return
+
+        length = item.get("duration_ms")
+        if targetPosition < 0:
+            targetPosition = 0
+
+        if targetPosition >= length:
+            await self.skip_playback()
+            return
+
+        self.seek_playback_position(position=targetPosition)
+
     async def previous_playback(self):
         """Previous song"""
         endpoint = "/me/player/previous"
@@ -418,6 +438,10 @@ class SpotifyClient:
         """Get user's available devices"""
         self.logger.info("Fetching available devices")
         return self._api_request("GET", "/me/player/devices")
+
+    def seek_playback_position(self, position: int):
+        endpoint = f"/me/player/seek?position_ms={position}"
+        self._api_request_simple("PUT", endpoint=endpoint)
 
 
 def load_credentials(secrets_file: str = SECRETS_FILE) -> tuple[str, str]:
@@ -517,13 +541,12 @@ async def main():
                     print("Song skipped\n")
                 case "o":
                     print("skipping 10s")
+                    await client.skip_ms_playback(ms=10000)
                 case "u":
                     print("reversing 10s")
+                    await client.skip_ms_playback(ms=-10000)
 
             show_playback_state(client=client)
-
-        # client.skip_playback()
-        # print(f"Playback skipped")
 
     except Exception as e:
         logging.error(f"Application error: {e}")
